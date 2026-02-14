@@ -1,0 +1,4 @@
+plugins:
+    mentioned_media_enabled:
+        default: true
+        client: true
