@@ -7,14 +7,15 @@ module Jobs
 			all_posts = topic.posts
 			media_items = []
 			all_posts.each do |p|
-				urls = p.raw.scan(/https?:\/\/[^\s<>\[\]]+/)
+				urls = p.raw.scan(/https?:\/\/[^\s<>]+/)
 				cooked_doc = Nokogiri::HTML5.fragment(p.cooked)
+				onebox_map = build_onebox_map(cooked_doc)
 				urls.each do |url|
-					url = url.chomp('/').split('?').first
-					next unless categorize_media(url, "")
-					onebox_title = extract_onebox_title(cooked_doc, url)
-					title = extract_best_title(url, onebox_title)
-					item = categorize_media(url, title)
+					clean_url = url.chomp('/').split('?').first
+					next unless categorize_media(clean_url, "")
+					onebox_title = onebox_map[normalize_url(url)]
+					title = extract_best_title(clean_url, onebox_title)
+					item = categorize_media(clean_url, title)
 					media_items << item if item && !media_items.any? { |m| m[:url] == item[:url] }
 				end
 			end
@@ -22,13 +23,20 @@ module Jobs
 			topic.save_custom_fields
 		end
 		private
-		def extract_onebox_title(doc, url)
-			onebox = doc.at_css("aside.onebox[data-onebox-src*='#{url.gsub('/', '\/')}']")
-			return nil unless onebox
-			title = onebox.at_css('.onebox-body h3 a, .onebox-body h3, h3 a, h3')&.text&.strip
-			title ||= onebox.at_css('meta[property="og:title"]')&.[]('content')&.strip
-			title ||= onebox.at_css('meta[name="twitter:title"]')&.[]('content')&.strip
-			title
+		def normalize_url(url)
+			url.chomp('/').split('?').first.downcase
+		end
+		def build_onebox_map(doc)
+			map = {}
+			doc.css('aside.onebox').each do |onebox|
+				url = onebox['data-onebox-src']
+				next unless url
+				title = onebox.at_css('.onebox-body h3 a, .onebox-body h3, h3 a, h3')&.text&.strip
+				title ||= onebox.at_css('meta[property="og:title"]')&.[]('content')&.strip
+				title ||= onebox.at_css('meta[name="twitter:title"]')&.[]('content')&.strip
+				map[normalize_url(url)] = title if title
+			end
+			map
 		end
 		def categorize_media(url, title)
 			return nil unless url
@@ -52,7 +60,7 @@ module Jobs
 				return { type: "music", url: url, title: title, icon: "music" }
 			elsif host.include?("igdb.com") || host.include?("steampowered.com") || host.include?("playstation.com") || host.include?("xbox.com") || host.include?("nintendo.com") || host.include?("epicgames.com") || host.include?("gog.com")
 				return { type: "game", url: url, title: title, icon: "game" }
-			elsif host.include?("wikipedia.org") || host.include?("en.m.wikipedia.org")
+			elsif host.include?("wikipedia.org")
 				if path.match?(/\/wiki\/.+_(film|tv_series|book|album|video_game)/i)
 					type = case path
 					when /_(film)/i then "movie"
