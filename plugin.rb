@@ -6,6 +6,8 @@
 
 enabled_site_setting :mentioned_media_enabled
 
+register_asset "stylesheets/mentioned-media.scss"
+
 after_initialize do
 	module ::MentionedMedia
 		PLUGIN_NAME = "mentioned-media"

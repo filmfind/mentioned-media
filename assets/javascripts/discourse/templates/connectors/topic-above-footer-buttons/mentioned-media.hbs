@@ -1,8 +1,8 @@
-{{#if model.mentioned_media}}
+{{#if this.model.mentioned_media}}
 	<div class="mentioned-media-container">
 		<h3 class="mentioned-media-title">Mentioned Media</h3>
 		<ul class="mentioned-media-list">
-			{{#each model.mentioned_media as |item|}}
+			{{#each this.model.mentioned_media as |item|}}
 				<li class="mentioned-media-item mentioned-media-{{item.type}}">
 					<a href="{{item.url}}" target="_blank" rel="noopener noreferrer" class="mentioned-media-link">
 						<span class="mentioned-media-icon">{{{item.icon_svg}}}</span>
