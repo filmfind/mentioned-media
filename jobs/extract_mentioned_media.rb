@@ -13,7 +13,7 @@ module Jobs
 					next unless link
 					url = link['href']
 					next unless url
-					onebox_title = onebox.at_css('h3, h4, .source')&.text&.strip
+					onebox_title = onebox.at_css('.onebox-body h3, .onebox-body h4, h3, h4, .source, [class*="title"]')&.text&.strip
 					link_text = link.text.strip
 					title = extract_best_title(url, onebox_title, link_text)
 					item = categorize_media(url, title)
@@ -69,7 +69,7 @@ module Jobs
 				if path.include?("/album/") || path.include?("/artist/")
 					return { type: "music", url: url, title: title, icon: "music" }
 				end
-			elsif host.include?("igdb.com") || host.include?("steampowered.com") || host.include?("store.playstation.com") || host.include?("xbox.com") || host.include?("nintendo.com") || host.include?("store.epicgames.com") || host.include?("gog.com")
+			elsif host.include?("igdb.com") || host.include?("steampowered.com") || host.include?("playstation.com") || host.include?("xbox.com") || host.include?("nintendo.com") || host.include?("epicgames.com") || host.include?("gog.com")
 				return { type: "game", url: url, title: title, icon: "game" }
 			end
 			nil
