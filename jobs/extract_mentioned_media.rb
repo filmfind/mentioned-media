@@ -8,28 +8,20 @@ module Jobs
 			media_items = []
 			all_posts.each do |p|
 				doc = Nokogiri::HTML5.fragment(p.cooked)
-				doc.css('aside.onebox').each do |onebox|
-					link = onebox.at_css('a.onebox') || onebox.at_css('a')
-					next unless link
+				doc.css('a[href]').each do |link|
 					url = link['href']
 					next unless url
-					onebox_title = onebox.at_css('.onebox-body h3 a, .onebox-body h3, h3 a, h3')&.text&.strip
+					next unless categorize_media(url, "")
+					onebox = link.ancestors('aside.onebox').first
+					onebox_title = onebox&.at_css('.onebox-body h3 a, .onebox-body h3, h3 a, h3')&.text&.strip
+					onebox_title ||= onebox&.at_css('meta[property="og:title"]')&.[]('content')&.strip
+					onebox_title ||= onebox&.at_css('meta[name="twitter:title"]')&.[]('content')&.strip
 					link_text = link.text.strip
 					title = extract_best_title(url, onebox_title, link_text)
 					item = categorize_media(url, title)
 					media_items << item if item && !media_items.any? { |m| m[:url] == item[:url] }
 				end
-				doc.css('a.onebox').each do |link|
-					next if link.ancestors('aside.onebox').any?
-					url = link['href']
-					next unless url
-					link_text = link.text.strip
-					title = extract_best_title(url, nil, link_text)
-					item = categorize_media(url, title)
-					media_items << item if item && !media_items.any? { |m| m[:url] == item[:url] }
-				end
 			end
-			media_items.sort_by! { |m| [m[:type], m[:title].to_s.downcase] }
 			topic.custom_fields["mentioned_media"] = media_items.to_json
 			topic.save_custom_fields
 		end
@@ -44,6 +36,30 @@ module Jobs
 				if path.include?("/title/")
 					return { type: "movie", url: url, title: title, icon: "movie" }
 				end
+			elsif host.include?("themoviedb.org") || host.include?("tmdb.org")
+				if path.include?("/movie/") || path.include?("/tv/")
+					type = path.include?("/movie/") ? "movie" : "tv"
+					icon = type == "movie" ? "movie" : "tv"
+					return { type: type, url: url, title: title, icon: icon }
+				end
+			elsif host.include?("letterboxd.com")
+				if path.include?("/film/")
+					return { type: "movie", url: url, title: title, icon: "movie" }
+				end
+			elsif host.include?("goodreads.com")
+				if path.include?("/book/")
+					return { type: "book", url: url, title: title, icon: "book" }
+				end
+			elsif host.include?("spotify.com")
+				if path.include?("/album/") || path.include?("/track/")
+					return { type: "music", url: url, title: title, icon: "music" }
+				end
+			elsif host.include?("music.apple.com")
+				if path.include?("/album/") || path.include?("/artist/")
+					return { type: "music", url: url, title: title, icon: "music" }
+				end
+			elsif host.include?("igdb.com") || host.include?("steampowered.com") || host.include?("playstation.com") || host.include?("xbox.com") || host.include?("nintendo.com") || host.include?("epicgames.com") || host.include?("gog.com")
+				return { type: "game", url: url, title: title, icon: "game" }
 			elsif host.include?("wikipedia.org") || host.include?("en.m.wikipedia.org")
 				if path.match?(/\/wiki\/.+_(film|TV_series|book|album|video_game)/)
 					type = case path
@@ -56,30 +72,6 @@ module Jobs
 					icon = get_icon_for_type(type)
 					return { type: type, url: url, title: title, icon: icon }
 				end
-			elsif host.include?("goodreads.com")
-				if path.include?("/book/")
-					return { type: "book", url: url, title: title, icon: "book" }
-				end
-			elsif host.include?("themoviedb.org") || host.include?("tmdb.org")
-				if path.include?("/movie/") || path.include?("/tv/")
-					type = path.include?("/movie/") ? "movie" : "tv"
-					icon = type == "movie" ? "movie" : "tv"
-					return { type: type, url: url, title: title, icon: icon }
-				end
-			elsif host.include?("spotify.com")
-				if path.include?("/album/") || path.include?("/track/")
-					return { type: "music", url: url, title: title, icon: "music" }
-				end
-			elsif host.include?("letterboxd.com")
-				if path.include?("/film/")
-					return { type: "movie", url: url, title: title, icon: "movie" }
-				end
-			elsif host.include?("music.apple.com")
-				if path.include?("/album/") || path.include?("/artist/")
-					return { type: "music", url: url, title: title, icon: "music" }
-				end
-			elsif host.include?("igdb.com") || host.include?("steampowered.com") || host.include?("playstation.com") || host.include?("xbox.com") || host.include?("nintendo.com") || host.include?("epicgames.com") || host.include?("gog.com")
-				return { type: "game", url: url, title: title, icon: "game" }
 			end
 			nil
 		end
@@ -90,47 +82,81 @@ module Jobs
 		end
 		def parse_title_from_url(url)
 			uri = URI.parse(url) rescue nil
-			return "Unknown" unless uri
+			return extract_fallback_title(url) unless uri
 			host = uri.host&.downcase || ""
 			path = uri.path || ""
 			if host.include?("wikipedia.org")
 				parts = path.split("/").reject(&:empty?)
-				return "Unknown" if parts.length < 2
+				return extract_fallback_title(url) if parts.length < 2
 				title = parts.last
 				title = title.gsub("_", " ")
 				title = title.gsub(/\s*\((film|TV_series|book|album|video_game)\)\s*$/i, "")
-				return clean_title(title)
+				return clean_title(title, url)
 			elsif host.include?("goodreads.com") || host.include?("themoviedb.org") || host.include?("tmdb.org")
 				parts = path.split("/").reject(&:empty?)
 				slug = parts.last
-				return "Unknown" unless slug
+				return extract_fallback_title(url) unless slug
 				if slug.include?("-")
 					title = slug.split("-", 2).last
 					title = title.gsub("-", " ")
-					return clean_title(title)
+					return clean_title(title, url)
 				end
 			elsif host.include?("steampowered.com")
 				parts = path.split("/").reject(&:empty?)
 				title = parts.last
-				return "Unknown" unless title
+				return extract_fallback_title(url) unless title
 				title = title.gsub("_", " ")
-				return clean_title(title)
+				return clean_title(title, url)
 			elsif host.include?("letterboxd.com")
 				parts = path.split("/").reject(&:empty?)
-				return "Unknown" if parts.length < 2
+				return extract_fallback_title(url) if parts.length < 2
 				title = parts.last
 				title = title.gsub("-", " ")
-				return clean_title(title)
+				return clean_title(title, url)
+			elsif host.include?("igdb.com")
+				parts = path.split("/").reject(&:empty?)
+				return extract_fallback_title(url) if parts.empty?
+				title = parts.last
+				title = title.gsub("-", " ")
+				return clean_title(title, url)
+			elsif host.include?("epicgames.com")
+				parts = path.split("/").reject(&:empty?)
+				slug = parts.last
+				return extract_fallback_title(url) unless slug
+				title = slug.gsub("-", " ")
+				return clean_title(title, url)
+			elsif host.include?("gog.com")
+				parts = path.split("/").reject(&:empty?)
+				slug = parts.last
+				return extract_fallback_title(url) unless slug
+				title = slug.gsub("_", " ")
+				return clean_title(title, url)
 			end
-			"Unknown"
+			extract_fallback_title(url)
 		rescue
-			"Unknown"
+			extract_fallback_title(url)
 		end
-		def clean_title(title)
-			return "Unknown" if title.nil? || title.empty?
-			return "Unknown" if title.match?(/^\d+$/)
-			return "Unknown" if title.match?(/^tt\d+$/i)
+		def clean_title(title, url)
+			return extract_fallback_title(url) if title.nil? || title.empty?
+			return extract_fallback_title(url) if title.match?(/^\d+$/)
+			return extract_fallback_title(url) if title.match?(/^tt\d+$/i)
+			sanitize_title(title)
+		end
+		def sanitize_title(title)
+			title = title.split("|").first.strip
+			title = title.gsub(/[_()]/, " ")
+			title = title.gsub(/\s+/, " ").strip
 			title.split.map(&:capitalize).join(" ")
+		end
+		def extract_fallback_title(url)
+			uri = URI.parse(url) rescue nil
+			return url unless uri
+			path = uri.path || ""
+			parts = path.split("/").reject(&:empty?)
+			return url if parts.empty?
+			parts.last || url
+		rescue
+			url
 		end
 		def get_icon_for_type(type)
 			case type
