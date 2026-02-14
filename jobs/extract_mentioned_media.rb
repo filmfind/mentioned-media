@@ -7,17 +7,13 @@ module Jobs
 			all_posts = topic.posts
 			media_items = []
 			all_posts.each do |p|
-				doc = Nokogiri::HTML5.fragment(p.cooked)
-				doc.css('a[href]').each do |link|
-					url = link['href']
-					next unless url
+				urls = p.raw.scan(/https?:\/\/[^\s<>\[\]]+/)
+				cooked_doc = Nokogiri::HTML5.fragment(p.cooked)
+				urls.each do |url|
+					url = url.chomp('/').split('?').first
 					next unless categorize_media(url, "")
-					onebox = link.ancestors('aside.onebox').first
-					onebox_title = onebox&.at_css('.onebox-body h3 a, .onebox-body h3, h3 a, h3')&.text&.strip
-					onebox_title ||= onebox&.at_css('meta[property="og:title"]')&.[]('content')&.strip
-					onebox_title ||= onebox&.at_css('meta[name="twitter:title"]')&.[]('content')&.strip
-					link_text = link.text.strip
-					title = extract_best_title(url, onebox_title, link_text)
+					onebox_title = extract_onebox_title(cooked_doc, url)
+					title = extract_best_title(url, onebox_title)
 					item = categorize_media(url, title)
 					media_items << item if item && !media_items.any? { |m| m[:url] == item[:url] }
 				end
@@ -26,6 +22,14 @@ module Jobs
 			topic.save_custom_fields
 		end
 		private
+		def extract_onebox_title(doc, url)
+			onebox = doc.at_css("aside.onebox[data-onebox-src*='#{url.gsub('/', '\/')}']")
+			return nil unless onebox
+			title = onebox.at_css('.onebox-body h3 a, .onebox-body h3, h3 a, h3')&.text&.strip
+			title ||= onebox.at_css('meta[property="og:title"]')&.[]('content')&.strip
+			title ||= onebox.at_css('meta[name="twitter:title"]')&.[]('content')&.strip
+			title
+		end
 		def categorize_media(url, title)
 			return nil unless url
 			uri = URI.parse(url) rescue nil
@@ -49,29 +53,31 @@ module Jobs
 			elsif host.include?("igdb.com") || host.include?("steampowered.com") || host.include?("playstation.com") || host.include?("xbox.com") || host.include?("nintendo.com") || host.include?("epicgames.com") || host.include?("gog.com")
 				return { type: "game", url: url, title: title, icon: "game" }
 			elsif host.include?("wikipedia.org") || host.include?("en.m.wikipedia.org")
-				if path.match?(/\/wiki\/.+_(film|TV_series|book|album|video_game)/)
+				if path.match?(/\/wiki\/.+_(film|tv_series|book|album|video_game)/i)
 					type = case path
-					when /_(film)/ then "movie"
-					when /_(TV_series)/ then "tv"
-					when /_(book)/ then "book"
-					when /_(album)/ then "music"
-					when /_(video_game)/ then "game"
+					when /_(film)/i then "movie"
+					when /_(tv_series)/i then "tv"
+					when /_(book)/i then "book"
+					when /_(album)/i then "music"
+					when /_(video_game)/i then "game"
 					end
 					return { type: type, url: url, title: title, icon: get_icon(type) }
 				end
 			end
 			nil
 		end
-		def extract_best_title(url, onebox_title, link_text)
+		def extract_best_title(url, onebox_title)
 			if has_clean_slug?(url)
 				parsed = parse_title_from_url(url)
-				return sanitize_title(parsed) if parsed && !parsed.empty?
+				cleaned = sanitize_title(parsed)
+				return cleaned if cleaned && !cleaned.empty?
 			end
-			return sanitize_title(onebox_title) if onebox_title && !onebox_title.empty? && onebox_title != url
-			return sanitize_title(link_text) if link_text && !link_text.empty? && link_text != url
-			parsed = parse_title_from_url(url)
-			return sanitize_title(parsed) if parsed && !parsed.empty?
-			url_fallback(url)
+			cleaned = sanitize_title(onebox_title)
+			return cleaned if cleaned && !cleaned.empty?
+			fallback = url_fallback(url)
+			cleaned = sanitize_title(fallback)
+			return cleaned if cleaned && !cleaned.empty?
+			type_name_fallback(url)
 		end
 		def has_clean_slug?(url)
 			uri = URI.parse(url) rescue nil
@@ -116,15 +122,19 @@ module Jobs
 		end
 		def sanitize_title(title)
 			return nil if title.nil? || title.empty?
-			return nil if title.match?(/^\d+$/)
-			return nil if title.match?(/^tt\d+$/i)
-			return nil if title.match?(/^UP\d+-[A-Z0-9_-]+$/i)
-			return nil if title.match?(/^[A-Z0-9]{10,}$/i)
+			title = title.gsub(/[_™®©:–—…]/, " ")
 			title = title.split("|").first.strip
+			title = title.split(" by ").first.strip
+			title = title.split(" on ").first.strip
+			title = title.split(" for ").first.strip
+			title = title.split(" - ").first.strip
 			title = title.gsub(/\s*\([^)]*\)\s*/, " ")
-			title = title.gsub(/[_™®©]/, " ")
 			title = title.gsub(/\s+/, " ").strip
 			return nil if title.empty?
+			return nil if title.match?(/^\d+$/)
+			return nil if title.match?(/^tt\d+$/i)
+			return nil if title.match?(/^up\d+/i)
+			return nil if title.match?(/^[a-z0-9]{15,}$/i)
 			title.split.map(&:capitalize).join(" ")
 		end
 		def url_fallback(url)
@@ -137,6 +147,18 @@ module Jobs
 			fallback.gsub(/[-_]/, " ").split.map(&:capitalize).join(" ")
 		rescue
 			url
+		end
+		def type_name_fallback(url)
+			item = categorize_media(url, "")
+			return "Unknown Media" unless item
+			case item[:type]
+			when "movie" then "Movie"
+			when "tv" then "TV Show"
+			when "book" then "Book"
+			when "music" then "Music"
+			when "game" then "Video Game"
+			else "Media"
+			end
 		end
 		def get_icon(type)
 			case type
