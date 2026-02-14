@@ -13,9 +13,18 @@ module Jobs
 					next unless link
 					url = link['href']
 					next unless url
-					onebox_title = onebox.at_css('.onebox-body h3, .onebox-body h4, h3, h4, .source, [class*="title"]')&.text&.strip
+					onebox_title = onebox.at_css('.onebox-body h3 a, .onebox-body h3, h3 a, h3')&.text&.strip
 					link_text = link.text.strip
 					title = extract_best_title(url, onebox_title, link_text)
+					item = categorize_media(url, title)
+					media_items << item if item && !media_items.any? { |m| m[:url] == item[:url] }
+				end
+				doc.css('a.onebox').each do |link|
+					next if link.ancestors('aside.onebox').any?
+					url = link['href']
+					next unless url
+					link_text = link.text.strip
+					title = extract_best_title(url, nil, link_text)
 					item = categorize_media(url, title)
 					media_items << item if item && !media_items.any? { |m| m[:url] == item[:url] }
 				end
