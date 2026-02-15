@@ -18,10 +18,13 @@ after_initialize do
 	end
 	require_relative "jobs/extract_mentioned_media"
 	on(:post_created) do |post, opts|
-		Jobs.enqueue(:extract_mentioned_media, post_id: post.id)
+		Jobs.enqueue_in(3.seconds, :extract_mentioned_media, post_id: post.id)
 	end
 	on(:post_edited) do |post, topic_changed|
-		Jobs.enqueue(:extract_mentioned_media, post_id: post.id)
+		Jobs.enqueue_in(3.seconds, :extract_mentioned_media, post_id: post.id)
+	end
+	on(:after_post_cook) do |post, cooked|
+		Jobs.enqueue_in(1.second, :extract_mentioned_media, post_id: post.id)
 	end
 	add_to_serializer(:topic_view, :mentioned_media) do
 		media_json = object.topic.custom_fields["mentioned_media"]

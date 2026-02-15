@@ -160,7 +160,20 @@ module Jobs
 			return nil if title.match?(/^tt\d+$/i)
 			return nil if title.match?(/^up\d+/i)
 			return nil if title.match?(/^[a-z0-9]{15,}$/i)
-			title.split.map(&:capitalize).join(" ")
+			to_title_case(title)
+		end
+		def to_title_case(title)
+			small_words = %w[a an and as at but by en for from if in is it nor of off on or per so the to up v via vs with yet]
+			words = title.split
+			words.map.with_index do |word, index|
+				if index == 0 || index == words.length - 1
+					word.capitalize
+				elsif small_words.include?(word.downcase)
+					word.downcase
+				else
+					word.capitalize
+				end
+			end.join(" ")
 		end
 		def url_fallback(url)
 			uri = URI.parse(url) rescue nil

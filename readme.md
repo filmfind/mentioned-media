@@ -4,15 +4,15 @@ A minimalist Discourse plugin that automatically lists media (movies, TV shows, 
 
 ## Features
 
-- Automatically detects media links from IMDb, Wikipedia, Goodreads, Spotify, TMDB, IGDB, and Steam
+- Automatically detects media links from popular sites
 - Displays a clean "Mentioned Media" widget showing all media referenced in a topic
+- Intelligent title extraction from URLs and oneboxes
 - Zero configuration required (works out of the box)
-- Minimal footprint (leverages Discourse's existing Onebox system)
+- Minimal footprint (scans raw post content, no external API calls)
 
 ## Installation
 
 1. Add the plugin to your `app.yml`:
-
 ```yaml
 hooks:
   after_code:
@@ -23,31 +23,53 @@ hooks:
 ```
 
 2. Rebuild your container:
-
 ```bash
 cd /var/discourse
 ./launcher rebuild app
 ```
 
-## Supported Media Types
+## Supported Sites
 
-- **Movies**: IMDb, Wikipedia film pages, TMDB
-- **TV Shows**: IMDb, Wikipedia TV pages, TMDB
-- **Books**: Goodreads, Wikipedia book pages
-- **Music**: Spotify albums/tracks
-- **Games**: IGDB, Steam
+**Movies:**
+- IMDb
+- TMDB
+- Letterboxd
+- Wikipedia
+
+**TV Shows:**
+- IMDb
+- TMDB
+- Wikipedia
+
+**Books:**
+- Goodreads
+- Wikipedia
+
+**Music:**
+- Spotify
+- Apple Music
+
+**Games:**
+- Steam
+- PlayStation
+- Xbox
+- Nintendo
+- Epic Games
+- GOG
+- IGDB
 
 ## How it Works
 
-The plugin hooks into Discourse's Onebox system to detect when media-related URLs are posted. When a post contains a link to supported media sites, the plugin:
+The plugin scans post content for media URLs and builds a list of all media mentioned in a topic:
 
-1. Extracts the URL and metadata from Discourse's existing Onebox cache
-2. Categorizes the media type
-3. Stores references in topic custom fields
-4. Displays all mentioned media in a widget below the topic
+1. Extracts URLs from raw post content (including embedded players)
+2. Parses clean titles from URL slugs when available
+3. Falls back to onebox metadata for sites with ID-based URLs
+4. Categorizes media by type and displays with appropriate icons
+5. Stores references in topic custom fields for persistence
 
-No additional API calls or external requests are made (everything uses data Discourse already fetched).
+Media appears in the order mentioned, making it easy to follow discussion context.
 
 ## License
 
-Public Domain
+Public Domain (CC0)
