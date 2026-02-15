@@ -38,8 +38,7 @@
 	transition: background 0.2s;
 }
 
-.mentioned-media-link:hover {
-	background: var(--primary-low-mid);
+.mentioned-media-link:hover, .mentioned-media-link:focus {
 	text-decoration: none;
 }
 
@@ -56,5 +55,8 @@
 }
 
 .mentioned-media-text {
+	max-width: 250px;
 	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
 }

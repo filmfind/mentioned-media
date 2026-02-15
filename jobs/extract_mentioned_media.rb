@@ -28,13 +28,21 @@ module Jobs
 		end
 		def build_onebox_map(doc)
 			map = {}
-			doc.css('aside.onebox').each do |onebox|
+			doc.css('aside[class*="onebox"]').each do |onebox|
 				url = onebox['data-onebox-src']
 				next unless url
 				title = onebox.at_css('.onebox-body h3 a, .onebox-body h3, h3 a, h3')&.text&.strip
 				title ||= onebox.at_css('meta[property="og:title"]')&.[]('content')&.strip
 				title ||= onebox.at_css('meta[name="twitter:title"]')&.[]('content')&.strip
 				map[normalize_url(url)] = title if title
+			end
+			doc.css('a.onebox').each do |link|
+				next if link.ancestors('aside').any?
+				url = link['href']
+				next unless url
+				title = link.text&.strip
+				next if !title || title.empty? || title == url
+				map[normalize_url(url)] = title
 			end
 			map
 		end
@@ -99,7 +107,8 @@ module Jobs
 			host.include?("steampowered.com") ||
 			host.include?("gog.com") ||
 			host.include?("igdb.com") ||
-			host.include?("epicgames.com")
+			host.include?("epicgames.com") ||
+			host.include?("nintendo.com")
 		end
 		def parse_title_from_url(url)
 			uri = URI.parse(url) rescue nil
@@ -112,7 +121,7 @@ module Jobs
 				return nil if parts.length < 2
 				title = parts.last
 				title.gsub("_", " ").gsub(/\s*\(film\)\s*$/i, "").gsub(/\s*\(TV_series\)\s*$/i, "").gsub(/\s*\(book\)\s*$/i, "").gsub(/\s*\(album\)\s*$/i, "").gsub(/\s*\(video_game\)\s*$/i, "")
-			elsif host.include?("goodreads.com") || host.include?("themoviedb.org") || host.include?("tmdb.org") || host.include?("letterboxd.com") || host.include?("igdb.com") || host.include?("epicgames.com")
+			elsif host.include?("goodreads.com") || host.include?("themoviedb.org") || host.include?("tmdb.org") || host.include?("igdb.com") || host.include?("epicgames.com")
 				slug = parts.last
 				return nil unless slug
 				if slug.include?("-")
@@ -120,8 +129,16 @@ module Jobs
 				else
 					slug.gsub("-", " ")
 				end
+			elsif host.include?("letterboxd.com")
+				slug = parts.last
+				return nil unless slug
+				slug.gsub("-", " ")
 			elsif host.include?("steampowered.com") || host.include?("gog.com")
 				parts.last.gsub("_", " ")
+			elsif host.include?("nintendo.com")
+				slug = parts.last
+				return nil unless slug
+				slug.gsub("-", " ").gsub(/\s+(switch|nintendo)\s*$/i, "").strip
 			else
 				nil
 			end
